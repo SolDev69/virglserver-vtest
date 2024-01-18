@@ -49,8 +49,7 @@ jobs:
         run: |
           git clone --shallow-since 2022-06-27 https://gitlab.freedesktop.org/virgl/virglrenderer
           cd virglrenderer
-          wget https://cdn.discordapp.com/attachments/755410958100201472/1197617470597505094/vtest-patch.diff
-          git apply -v --rej ./vtest-patch.diff
+          git apply -v --rej ../vtest-patch.diff
           meson "build-android-${{matrix.arch}}" \
             --prefix=/tmp/build \
             --cross-file "android-${{matrix.arch}}" \

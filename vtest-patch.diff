@@ -1,0 +1,1206 @@
+diff --git a/.github/workflows/main.yml b/.github/workflows/main.yml
+new file mode 100644
+index 00000000..6bd75a12
+--- /dev/null
++++ b/.github/workflows/main.yml
+@@ -0,0 +1,70 @@
++name: Build for Android
++
++on:
++  [pull_request, push, workflow_dispatch]
++
++# A workflow run is made up of one or more jobs that can run sequentially or in parallel
++jobs:
++  build:
++    strategy:
++      matrix:
++        arch: [ "aarch64" ]
++      fail-fast: false
++
++    name: "Build ${{matrix.arch}}"
++
++    runs-on: ubuntu-latest
++    env:
++      ANDROID_NDK_HOME: "${ANDROID_SDK_ROOT}/ndk-bundle"
++
++    steps:
++      - uses: actions/checkout@v2
++
++      - name: Setup
++        run: |
++          sudo apt update
++          sudo apt install -y meson libxrandr-dev libxxf86vm-dev libxcb-*-dev libx11-xcb-dev libxfixes-dev libdrm-dev libx11-dev
++          pip3 install mako ninja
++          mkdir -p /tmp/build/lib/pkgconfig
++          cp libdrm.pc /tmp/build/lib/pkgconfig/
++          wget https://github.com/Vera-Firefly/libepoxy/raw/master/include/EGL/eglplatform.h -P EGL
++          wget https://github.com/Vera-Firefly/libepoxy/raw/master/include/KHR/khrplatform.h -P KHR
++
++      - name: Download NDK
++        run: |
++          wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
++          unzip android-ndk-r26b-linux.zip
++
++      - name: Build libepoxy
++        run: |
++          git clone --depth 1 https://github.com/Vera-Firefly/libepoxy.git
++          cd libepoxy
++          meson "build-android-${{matrix.arch}}" \
++            --prefix=/tmp/build \
++            --cross-file "../android-${{matrix.arch}}" \
++            -Degl=yes -Dglx=no -Dx11=false
++          ninja -C "build-android-${{matrix.arch}}" install
++
++      - name: Build virglrenderer
++        run: |
++          meson "build-android-${{matrix.arch}}" \
++            --prefix=/tmp/build \
++            --cross-file "android-${{matrix.arch}}" \
++            -Dplatforms=egl \
++            -Dc_args='-Wno-error=gnu-offsetof-extensions'
++          ninja -C "build-android-${{matrix.arch}}" install
++          cp "build-android-${{matrix.arch}}/vtest/libvirgl_test_server.so" /tmp/build/lib/
++
++      - name: Change suffix
++        run: |
++          cd /tmp/build/lib
++          rm libepoxy.so libepoxy.so.0 libvirglrenderer.so libvirglrenderer.so.1
++          mv libepoxy.so.0.* libepoxy_0.so
++          mv libvirglrenderer.so.1.* libvirglrenderer_1.so
++          perl -pi -e 's/libepoxy.so.0/libepoxy_0.so/g' *.so
++          perl -pi -e 's/libvirglrenderer.so.1/libvirglrenderer_1.so/g' *.so ../bin/*
++      - name: Upload libraries
++        uses: actions/upload-artifact@v2
++        with:
++          name: build_${{matrix.arch}}
++          path: /tmp/build
+diff --git a/android-aarch64 b/android-aarch64
+new file mode 100644
+index 00000000..c6708969
+--- /dev/null
++++ b/android-aarch64
+@@ -0,0 +1,17 @@
++[binaries]
++ar = '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
++c = ['ccache', '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang', '-O3', '-DVK_USE_PLATFORM_ANDROID_KHR', '-fPIC']
++cpp = ['ccache', '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang++', '-O3', '-DVK_USE_PLATFORM_ANDROID_KHR', '-fPIC', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
++c_ld = 'lld'
++cpp_ld = 'lld'
++strip = '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
++# Android doesn't come with a pkg-config, but we need one for meson to be happy not
++# finding all the optional deps it looks for.  Use system pkg-config pointing at a
++# directory we get to populate with any .pc files we want to add for Android
++pkgconfig = ['env', 'PKG_CONFIG_LIBDIR=/tmp/build/lib/pkgconfig', '/usr/bin/pkg-config']
++
++[host_machine]
++system = 'linux'
++cpu_family = 'arm'
++cpu = 'armv8'
++endian = 'little'
+\ No newline at end of file
+diff --git a/android-arm32 b/android-arm32
+new file mode 100644
+index 00000000..e78bd86e
+--- /dev/null
++++ b/android-arm32
+@@ -0,0 +1,22 @@
++[binaries]
++ar = '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
++c = ['ccache', '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android29-clang', '-DVK_USE_PLATFORM_ANDROID_KHR', '-fPIC']
++cpp = ['ccache', '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android29-clang++', '-DVK_USE_PLATFORM_ANDROID_KHR', '-fPIC', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
++c_ld = 'lld'
++cpp_ld = 'lld'
++strip = '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android-strip'
++# Android doesn't come with a pkg-config, but we need one for meson to be happy not
++# finding all the optional deps it looks for.  Use system pkg-config pointing at a
++# directory we get to populate with any .pc files we want to add for Android
++pkgconfig = ['env', 'PKG_CONFIG_LIBDIR=/tmp/build/lib/pkgconfig', '/usr/bin/pkg-config']
++
++[host_machine]
++system = 'linux'
++# cpu_family = 'x86_64'
++# cpu = 'amd64'
++
++# ik this is wrong but workaround sanity check
++cpu_family = 'arm'
++cpu = 'armv7'
++
++endian = 'little'
+\ No newline at end of file
+diff --git a/android-x86_64 b/android-x86_64
+new file mode 100644
+index 00000000..ceb75aef
+--- /dev/null
++++ b/android-x86_64
+@@ -0,0 +1,22 @@
++[binaries]
++ar = '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
++c = ['ccache', '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android29-clang', '-DVK_USE_PLATFORM_ANDROID_KHR', '-fPIC']
++cpp = ['ccache', '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android29-clang++', '-DVK_USE_PLATFORM_ANDROID_KHR', '-fPIC', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
++c_ld = 'lld'
++cpp_ld = 'lld'
++strip = '/home/runner/work/Virglrenderer-test/Virglrenderer-test/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android-strip'
++# Android doesn't come with a pkg-config, but we need one for meson to be happy not
++# finding all the optional deps it looks for.  Use system pkg-config pointing at a
++# directory we get to populate with any .pc files we want to add for Android
++pkgconfig = ['env', 'PKG_CONFIG_LIBDIR=/tmp/build/lib/pkgconfig', '/usr/bin/pkg-config']
++
++[host_machine]
++system = 'linux'
++# cpu_family = 'x86_64'
++# cpu = 'amd64'
++
++# ik this is wrong but workaround sanity check
++cpu_family = 'arm'
++cpu = 'armv8'
++
++endian = 'little'
+\ No newline at end of file
+diff --git a/egltest.c b/egltest.c
+new file mode 100644
+index 00000000..c2092698
+--- /dev/null
++++ b/egltest.c
+@@ -0,0 +1,149 @@
++// test based on https://github.com/matusnovak/rpi-opengl-without-x/blob/master/triangle.c
++// clang egltest.c -lEGL build/vtest/libvirgl_test_server.so -o egltest
++
++#include <EGL/egl.h>
++#include <GLES2/gl2.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++static const EGLint configAttribs[] = {
++    EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8,
++    EGL_RED_SIZE, 8, EGL_DEPTH_SIZE, 8,
++    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_NONE};
++
++// Width and height of the desired framebuffer
++static const EGLint pbufferAttribs[] = {
++    EGL_WIDTH,
++    1280,
++    EGL_HEIGHT,
++    720,
++    EGL_NONE,
++};
++
++static const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3,
++                                        EGL_NONE};
++
++static const char *eglGetErrorStr()
++{
++    switch (eglGetError())
++    {
++    case EGL_SUCCESS:
++        return "The last function succeeded without error.";
++    case EGL_NOT_INITIALIZED:
++        return "EGL is not initialized, or could not be initialized, for the "
++               "specified EGL display connection.";
++    case EGL_BAD_ACCESS:
++        return "EGL cannot access a requested resource (for example a context "
++               "is bound in another thread).";
++    case EGL_BAD_ALLOC:
++        return "EGL failed to allocate resources for the requested operation.";
++    case EGL_BAD_ATTRIBUTE:
++        return "An unrecognized attribute or attribute value was passed in the "
++               "attribute list.";
++    case EGL_BAD_CONTEXT:
++        return "An EGLContext argument does not name a valid EGL rendering "
++               "context.";
++    case EGL_BAD_CONFIG:
++        return "An EGLConfig argument does not name a valid EGL frame buffer "
++               "configuration.";
++    case EGL_BAD_CURRENT_SURFACE:
++        return "The current surface of the calling thread is a window, pixel "
++               "buffer or pixmap that is no longer valid.";
++    case EGL_BAD_DISPLAY:
++        return "An EGLDisplay argument does not name a valid EGL display "
++               "connection.";
++    case EGL_BAD_SURFACE:
++        return "An EGLSurface argument does not name a valid surface (window, "
++               "pixel buffer or pixmap) configured for GL rendering.";
++    case EGL_BAD_MATCH:
++        return "Arguments are inconsistent (for example, a valid context "
++               "requires buffers not supplied by a valid surface).";
++    case EGL_BAD_PARAMETER:
++        return "One or more argument values are invalid.";
++    case EGL_BAD_NATIVE_PIXMAP:
++        return "A NativePixmapType argument does not refer to a valid native "
++               "pixmap.";
++    case EGL_BAD_NATIVE_WINDOW:
++        return "A NativeWindowType argument does not refer to a valid native "
++               "window.";
++    case EGL_CONTEXT_LOST:
++        return "A power management event has occurred. The application must "
++               "destroy all contexts and reinitialise OpenGL ES state and "
++               "objects to continue rendering.";
++    default:
++        break;
++    }
++    return "Unknown error!";
++}
++
++int vtest_main(int argc, char **argv);
++int main(int argc, char **argv)
++{
++    EGLDisplay display;
++    int major, minor;
++    int desiredWidth, desiredHeight;
++    GLuint program, vert, frag, vbo;
++    GLint posLoc, colorLoc, result;
++
++    if ((display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) == EGL_NO_DISPLAY)
++    {
++        fprintf(stderr, "Failed to get EGL display! Error: %s\n",
++                eglGetErrorStr());
++        return EXIT_FAILURE;
++    }
++
++    if (eglInitialize(display, &major, &minor) == EGL_FALSE)
++    {
++        fprintf(stderr, "Failed to get EGL version! Error: %s\n",
++                eglGetErrorStr());
++        eglTerminate(display);
++        return EXIT_FAILURE;
++    }
++
++    printf("Initialized EGL version: %d.%d\n", major, minor);
++
++    EGLint numConfigs;
++    EGLConfig config;
++    if (!eglChooseConfig(display, configAttribs, &config, 1, &numConfigs))
++    {
++        fprintf(stderr, "Failed to get EGL config! Error: %s\n",
++                eglGetErrorStr());
++        eglTerminate(display);
++        return EXIT_FAILURE;
++    }
++
++    EGLSurface surface =
++        eglCreatePbufferSurface(display, config, pbufferAttribs);
++    if (surface == EGL_NO_SURFACE)
++    {
++        fprintf(stderr, "Failed to create EGL surface! Error: %s\n",
++                eglGetErrorStr());
++        eglTerminate(display);
++        return EXIT_FAILURE;
++    }
++
++    eglBindAPI(EGL_OPENGL_API);
++
++    EGLContext context =
++        eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
++    if (context == EGL_NO_CONTEXT)
++    {
++        fprintf(stderr, "Failed to create EGL context! Error: %s\n",
++                eglGetErrorStr());
++        eglDestroySurface(display, surface);
++        eglTerminate(display);
++        return EXIT_FAILURE;
++    }
++
++    eglMakeCurrent(display, surface, surface, context);
++
++    // init vtest
++    vtest_main(argc, argv);
++
++    // Cleanup
++    eglDestroyContext(display, context);
++    eglDestroySurface(display, surface);
++    eglTerminate(display);
++    return EXIT_SUCCESS;
++}
+diff --git a/libdrm.pc b/libdrm.pc
+new file mode 100644
+index 00000000..5707ebea
+--- /dev/null
++++ b/libdrm.pc
+@@ -0,0 +1,3 @@
++Name: libdrm
++Description: Android fake libdrm
++Version: 2.4.50
+\ No newline at end of file
+diff --git a/meson.build b/meson.build
+index 6e8c54aa..1a8d71a2 100644
+--- a/meson.build
++++ b/meson.build
+@@ -215,6 +215,7 @@ with_glx = require_glx or auto_egl_glx
+ 
+ have_egl = false
+ have_glx = false
++have_gbm = true
+ 
+ with_minigbm_allocation = get_option('minigbm_allocation')
+ if with_minigbm_allocation
+@@ -227,22 +228,30 @@ endif
+ 
+ if with_egl
+    if cc.has_header('epoxy/egl.h', dependencies: epoxy_dep) and epoxy_dep.get_variable(pkgconfig: 'epoxy_has_egl') == '1'
+-      if with_host_windows
+-         have_egl = true
++      have_egl = true
++      conf_data.set('HAVE_EPOXY_EGL_H', 1)
++      if (have_egl)
++         conf_data.set('HAVE_EPOXY_EGL_H', 1)
++         conf_data.set('HAVE_EGL_GBM_H', 1)
+       else
+-         if libdrm_dep.found()
+-            gbm_dep = dependency('gbm', version: '>= ' + _gbm_ver, required: require_egl)
+-         endif
+-         have_egl = gbm_dep.found() and cc.has_header('sys/mman.h', required: require_egl)
+-         conf_data.set('ENABLE_GBM', have_egl)
++         have_gbm = false
++         # assert(not require_egl,
++         #        'egl was explicitely requested which requires gbm, and this is not available')
+       endif
+-      conf_data.set('HAVE_EPOXY_EGL_H', have_egl)
+    else
+-      assert(not require_egl,
+-             'egl was explicitely requested but it is not supported by epoxy')
++      have_gbm = false
++      # assert(not require_egl,
++      #        'egl was explicitely requested but it is not supported by epoxy')
+    endif
+ endif
+ 
++if not have_gbm
++   gbm_dep = dependency('gbm', required: false)
++   have_egl = true
++   conf_data.set('HAVE_EPOXY_EGL_H', 1)
++   conf_data.set('HAVE_EGL_GBM_H', 0)
++endif
++
+ if with_glx
+    if cc.has_header('epoxy/glx.h', dependencies: epoxy_dep) and epoxy_dep.get_variable(pkgconfig: 'epoxy_has_glx') == '1'
+       glx_dep = dependency('x11', required: require_glx)
+@@ -273,9 +282,6 @@ with_render_server = with_venus
+ with_render_server_worker = get_option('render-server-worker')
+ render_server_install_dir = get_option('prefix') / get_option('libexecdir')
+ if with_venus
+-   if with_minigbm_allocation
+-      gbm_dep = dependency('gbm')
+-   endif
+    venus_dep = dependency('vulkan')
+ 
+    conf_data.set('ENABLE_VENUS', 1)
+diff --git a/src/gbm.h b/src/gbm.h
+new file mode 100644
+index 00000000..acf5498b
+--- /dev/null
++++ b/src/gbm.h
+@@ -0,0 +1,432 @@
++/*
++ * Copyright © 2011 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
++ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * Authors:
++ *    Benjamin Franzke <benjaminfranzke@googlemail.com>
++ */
++
++#ifndef _GBM_H_
++#define _GBM_H_
++
++#define __GBM__ 1
++
++#include <stddef.h>
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++
++/**
++ * \file gbm.h
++ * \brief Generic Buffer Manager
++ */
++
++struct gbm_device;
++struct gbm_bo;
++struct gbm_surface;
++
++/**
++ * \mainpage The Generic Buffer Manager
++ *
++ * This module provides an abstraction that the caller can use to request a
++ * buffer from the underlying memory management system for the platform.
++ *
++ * This allows the creation of portable code whilst still allowing access to
++ * the underlying memory manager.
++ */
++
++/**
++ * Abstraction representing the handle to a buffer allocated by the
++ * manager
++ */
++union gbm_bo_handle {
++void *ptr;
++int32_t s32;
++uint32_t u32;
++int64_t s64;
++uint64_t u64;
++};
++
++/** Format of the allocated buffer */
++enum gbm_bo_format {
++    /** RGB with 8 bits per channel in a 32 bit value */
++    GBM_BO_FORMAT_XRGB8888, 
++    /** ARGB with 8 bits per channel in a 32 bit value */
++    GBM_BO_FORMAT_ARGB8888
++    };
++
++
++/**
++ * The FourCC format codes are taken from the drm_fourcc.h definition, and
++ * re-namespaced. New GBM formats must not be added, unless they are
++ * identical ports from drm_fourcc.
++ */
++#define __gbm_fourcc_code(a,b,c,d) ((uint32_t)(a) | ((uint32_t)(b) << 8) | \
++((uint32_t)(c) << 16) | ((uint32_t)(d) << 24))
++
++#define GBM_FORMAT_BIG_ENDIAN (1<<31) /* format is big endian instead of little endian */
++
++/* color index */
++#define GBM_FORMAT_C8       __gbm_fourcc_code('C', '8', ' ', ' ') /* [7:0] C */
++
++/* 8 bpp Red */
++#define GBM_FORMAT_R8       __gbm_fourcc_code('R', '8', ' ', ' ') /* [7:0] R */
++
++/* 16 bpp RG */
++#define GBM_FORMAT_GR88     __gbm_fourcc_code('G', 'R', '8', '8') /* [15:0] G:R 8:8 little endian */
++
++/* 8 bpp RGB */
++#define GBM_FORMAT_RGB332   __gbm_fourcc_code('R', 'G', 'B', '8') /* [7:0] R:G:B 3:3:2 */
++#define GBM_FORMAT_BGR233   __gbm_fourcc_code('B', 'G', 'R', '8') /* [7:0] B:G:R 2:3:3 */
++
++/* 16 bpp RGB */
++#define GBM_FORMAT_XRGB4444 __gbm_fourcc_code('X', 'R', '1', '2') /* [15:0] x:R:G:B 4:4:4:4 little endian */
++#define GBM_FORMAT_XBGR4444 __gbm_fourcc_code('X', 'B', '1', '2') /* [15:0] x:B:G:R 4:4:4:4 little endian */
++#define GBM_FORMAT_RGBX4444 __gbm_fourcc_code('R', 'X', '1', '2') /* [15:0] R:G:B:x 4:4:4:4 little endian */
++#define GBM_FORMAT_BGRX4444 __gbm_fourcc_code('B', 'X', '1', '2') /* [15:0] B:G:R:x 4:4:4:4 little endian */
++
++#define GBM_FORMAT_ARGB4444 __gbm_fourcc_code('A', 'R', '1', '2') /* [15:0] A:R:G:B 4:4:4:4 little endian */
++#define GBM_FORMAT_ABGR4444 __gbm_fourcc_code('A', 'B', '1', '2') /* [15:0] A:B:G:R 4:4:4:4 little endian */
++#define GBM_FORMAT_RGBA4444 __gbm_fourcc_code('R', 'A', '1', '2') /* [15:0] R:G:B:A 4:4:4:4 little endian */
++#define GBM_FORMAT_BGRA4444 __gbm_fourcc_code('B', 'A', '1', '2') /* [15:0] B:G:R:A 4:4:4:4 little endian */
++
++#define GBM_FORMAT_XRGB1555 __gbm_fourcc_code('X', 'R', '1', '5') /* [15:0] x:R:G:B 1:5:5:5 little endian */
++#define GBM_FORMAT_XBGR1555 __gbm_fourcc_code('X', 'B', '1', '5') /* [15:0] x:B:G:R 1:5:5:5 little endian */
++#define GBM_FORMAT_RGBX5551 __gbm_fourcc_code('R', 'X', '1', '5') /* [15:0] R:G:B:x 5:5:5:1 little endian */
++#define GBM_FORMAT_BGRX5551 __gbm_fourcc_code('B', 'X', '1', '5') /* [15:0] B:G:R:x 5:5:5:1 little endian */
++
++#define GBM_FORMAT_ARGB1555 __gbm_fourcc_code('A', 'R', '1', '5') /* [15:0] A:R:G:B 1:5:5:5 little endian */
++#define GBM_FORMAT_ABGR1555 __gbm_fourcc_code('A', 'B', '1', '5') /* [15:0] A:B:G:R 1:5:5:5 little endian */
++#define GBM_FORMAT_RGBA5551 __gbm_fourcc_code('R', 'A', '1', '5') /* [15:0] R:G:B:A 5:5:5:1 little endian */
++#define GBM_FORMAT_BGRA5551 __gbm_fourcc_code('B', 'A', '1', '5') /* [15:0] B:G:R:A 5:5:5:1 little endian */
++
++#define GBM_FORMAT_RGB565   __gbm_fourcc_code('R', 'G', '1', '6') /* [15:0] R:G:B 5:6:5 little endian */
++#define GBM_FORMAT_BGR565   __gbm_fourcc_code('B', 'G', '1', '6') /* [15:0] B:G:R 5:6:5 little endian */
++
++/* 24 bpp RGB */
++#define GBM_FORMAT_RGB888   __gbm_fourcc_code('R', 'G', '2', '4') /* [23:0] R:G:B little endian */
++#define GBM_FORMAT_BGR888   __gbm_fourcc_code('B', 'G', '2', '4') /* [23:0] B:G:R little endian */
++
++/* 32 bpp RGB */
++#define GBM_FORMAT_XRGB8888 __gbm_fourcc_code('X', 'R', '2', '4') /* [31:0] x:R:G:B 8:8:8:8 little endian */
++#define GBM_FORMAT_XBGR8888 __gbm_fourcc_code('X', 'B', '2', '4') /* [31:0] x:B:G:R 8:8:8:8 little endian */
++#define GBM_FORMAT_RGBX8888 __gbm_fourcc_code('R', 'X', '2', '4') /* [31:0] R:G:B:x 8:8:8:8 little endian */
++#define GBM_FORMAT_BGRX8888 __gbm_fourcc_code('B', 'X', '2', '4') /* [31:0] B:G:R:x 8:8:8:8 little endian */
++
++#define GBM_FORMAT_ARGB8888 __gbm_fourcc_code('A', 'R', '2', '4') /* [31:0] A:R:G:B 8:8:8:8 little endian */
++#define GBM_FORMAT_ABGR8888 __gbm_fourcc_code('A', 'B', '2', '4') /* [31:0] A:B:G:R 8:8:8:8 little endian */
++#define GBM_FORMAT_RGBA8888 __gbm_fourcc_code('R', 'A', '2', '4') /* [31:0] R:G:B:A 8:8:8:8 little endian */
++#define GBM_FORMAT_BGRA8888 __gbm_fourcc_code('B', 'A', '2', '4') /* [31:0] B:G:R:A 8:8:8:8 little endian */
++
++#define GBM_FORMAT_XRGB2101010  __gbm_fourcc_code('X', 'R', '3', '0') /* [31:0] x:R:G:B 2:10:10:10 little endian */
++#define GBM_FORMAT_XBGR2101010  __gbm_fourcc_code('X', 'B', '3', '0') /* [31:0] x:B:G:R 2:10:10:10 little endian */
++#define GBM_FORMAT_RGBX1010102  __gbm_fourcc_code('R', 'X', '3', '0') /* [31:0] R:G:B:x 10:10:10:2 little endian */
++#define GBM_FORMAT_BGRX1010102  __gbm_fourcc_code('B', 'X', '3', '0') /* [31:0] B:G:R:x 10:10:10:2 little endian */
++
++#define GBM_FORMAT_ARGB2101010  __gbm_fourcc_code('A', 'R', '3', '0') /* [31:0] A:R:G:B 2:10:10:10 little endian */
++#define GBM_FORMAT_ABGR2101010  __gbm_fourcc_code('A', 'B', '3', '0') /* [31:0] A:B:G:R 2:10:10:10 little endian */
++#define GBM_FORMAT_RGBA1010102  __gbm_fourcc_code('R', 'A', '3', '0') /* [31:0] R:G:B:A 10:10:10:2 little endian */
++#define GBM_FORMAT_BGRA1010102  __gbm_fourcc_code('B', 'A', '3', '0') /* [31:0] B:G:R:A 10:10:10:2 little endian */
++
++/*
++ * Floating point 64bpp RGB
++ * IEEE 754-2008 binary16 half-precision float
++ * [15:0] sign:exponent:mantissa 1:5:10
++ */
++#define GBM_FORMAT_XBGR16161616F __gbm_fourcc_code('X', 'B', '4', 'H') /* [63:0] x:B:G:R 16:16:16:16 little endian */
++
++#define GBM_FORMAT_ABGR16161616F __gbm_fourcc_code('A', 'B', '4', 'H') /* [63:0] A:B:G:R 16:16:16:16 little endian */
++
++/* packed YCbCr */
++#define GBM_FORMAT_YUYV     __gbm_fourcc_code('Y', 'U', 'Y', 'V') /* [31:0] Cr0:Y1:Cb0:Y0 8:8:8:8 little endian */
++#define GBM_FORMAT_YVYU     __gbm_fourcc_code('Y', 'V', 'Y', 'U') /* [31:0] Cb0:Y1:Cr0:Y0 8:8:8:8 little endian */
++#define GBM_FORMAT_UYVY     __gbm_fourcc_code('U', 'Y', 'V', 'Y') /* [31:0] Y1:Cr0:Y0:Cb0 8:8:8:8 little endian */
++#define GBM_FORMAT_VYUY     __gbm_fourcc_code('V', 'Y', 'U', 'Y') /* [31:0] Y1:Cb0:Y0:Cr0 8:8:8:8 little endian */
++
++#define GBM_FORMAT_AYUV     __gbm_fourcc_code('A', 'Y', 'U', 'V') /* [31:0] A:Y:Cb:Cr 8:8:8:8 little endian */
++
++/*
++ * 2 plane YCbCr
++ * index 0 = Y plane, [7:0] Y
++ * index 1 = Cr:Cb plane, [15:0] Cr:Cb little endian
++ * or
++ * index 1 = Cb:Cr plane, [15:0] Cb:Cr little endian
++ */
++#define GBM_FORMAT_NV12     __gbm_fourcc_code('N', 'V', '1', '2') /* 2x2 subsampled Cr:Cb plane */
++#define GBM_FORMAT_NV21     __gbm_fourcc_code('N', 'V', '2', '1') /* 2x2 subsampled Cb:Cr plane */
++#define GBM_FORMAT_NV16     __gbm_fourcc_code('N', 'V', '1', '6') /* 2x1 subsampled Cr:Cb plane */
++#define GBM_FORMAT_NV61     __gbm_fourcc_code('N', 'V', '6', '1') /* 2x1 subsampled Cb:Cr plane */
++
++/*
++ * 3 plane YCbCr
++ * index 0: Y plane, [7:0] Y
++ * index 1: Cb plane, [7:0] Cb
++ * index 2: Cr plane, [7:0] Cr
++ * or
++ * index 1: Cr plane, [7:0] Cr
++ * index 2: Cb plane, [7:0] Cb
++ */
++#define GBM_FORMAT_YUV410   __gbm_fourcc_code('Y', 'U', 'V', '9') /* 4x4 subsampled Cb (1) and Cr (2) planes */
++#define GBM_FORMAT_YVU410   __gbm_fourcc_code('Y', 'V', 'U', '9') /* 4x4 subsampled Cr (1) and Cb (2) planes */
++#define GBM_FORMAT_YUV411   __gbm_fourcc_code('Y', 'U', '1', '1') /* 4x1 subsampled Cb (1) and Cr (2) planes */
++#define GBM_FORMAT_YVU411   __gbm_fourcc_code('Y', 'V', '1', '1') /* 4x1 subsampled Cr (1) and Cb (2) planes */
++#define GBM_FORMAT_YUV420   __gbm_fourcc_code('Y', 'U', '1', '2') /* 2x2 subsampled Cb (1) and Cr (2) planes */
++#define GBM_FORMAT_YVU420   __gbm_fourcc_code('Y', 'V', '1', '2') /* 2x2 subsampled Cr (1) and Cb (2) planes */
++#define GBM_FORMAT_YUV422   __gbm_fourcc_code('Y', 'U', '1', '6') /* 2x1 subsampled Cb (1) and Cr (2) planes */
++#define GBM_FORMAT_YVU422   __gbm_fourcc_code('Y', 'V', '1', '6') /* 2x1 subsampled Cr (1) and Cb (2) planes */
++#define GBM_FORMAT_YUV444   __gbm_fourcc_code('Y', 'U', '2', '4') /* non-subsampled Cb (1) and Cr (2) planes */
++#define GBM_FORMAT_YVU444   __gbm_fourcc_code('Y', 'V', '2', '4') /* non-subsampled Cr (1) and Cb (2) planes */
++
++struct gbm_format_name_desc {
++char name[5];
++};
++
++/**
++ * Flags to indicate the intended use for the buffer - these are passed into
++ * gbm_bo_create(). The caller must set the union of all the flags that are
++ * appropriate
++ *
++ * \sa Use gbm_device_is_format_supported() to check if the combination of format
++ * and use flags are supported
++ */
++enum gbm_bo_flags {
++    /**
++     * Buffer is going to be presented to the screen using an API such as KMS
++     */
++    GBM_BO_USE_SCANOUT      = (1 << 0),
++    /**
++     * Buffer is going to be used as cursor
++     */
++    GBM_BO_USE_CURSOR       = (1 << 1),
++    /**
++     * Deprecated
++     */
++    GBM_BO_USE_CURSOR_64X64 = GBM_BO_USE_CURSOR,
++    /**
++     * Buffer is to be used for rendering - for example it is going to be used
++     * as the storage for a color buffer
++     */
++    GBM_BO_USE_RENDERING    = (1 << 2),
++    /**
++     * Buffer can be used for gbm_bo_write.  This is guaranteed to work
++     * with GBM_BO_USE_CURSOR, but may not work for other combinations.
++     */
++    GBM_BO_USE_WRITE    = (1 << 3),
++    /**
++     * Buffer is linear, i.e. not tiled.
++     */
++    GBM_BO_USE_LINEAR = (1 << 4),
++    /**
++     * Buffer is protected, i.e. encrypted and not readable by CPU or any
++     * other non-secure / non-trusted components nor by non-trusted OpenGL,
++     * OpenCL, and Vulkan applications.
++     */
++    GBM_BO_USE_PROTECTED = (1 << 5),
++};
++
++int
++gbm_device_get_fd(struct gbm_device *gbm);
++
++const char *
++gbm_device_get_backend_name(struct gbm_device *gbm);
++
++int
++gbm_device_is_format_supported(struct gbm_device *gbm,
++uint32_t format, uint32_t usage);
++
++int
++gbm_device_get_format_modifier_plane_count(struct gbm_device *gbm,
++uint32_t format,
++uint64_t modifier);
++
++void
++gbm_device_destroy(struct gbm_device *gbm);
++
++struct gbm_device *
++gbm_create_device(int fd);
++
++struct gbm_bo *
++gbm_bo_create(struct gbm_device *gbm,
++uint32_t width, uint32_t height,
++uint32_t format, uint32_t flags);
++
++struct gbm_bo *
++gbm_bo_create_with_modifiers(struct gbm_device *gbm,
++uint32_t width, uint32_t height,
++uint32_t format,
++const uint64_t *modifiers,
++const unsigned int count);
++#define GBM_BO_IMPORT_WL_BUFFER         0x5501
++#define GBM_BO_IMPORT_EGL_IMAGE         0x5502
++#define GBM_BO_IMPORT_FD                0x5503
++#define GBM_BO_IMPORT_FD_MODIFIER       0x5504
++
++struct gbm_import_fd_data {
++int fd;
++uint32_t width;
++uint32_t height;
++uint32_t stride;
++uint32_t format;
++};
++
++#define GBM_MAX_PLANES 4
++
++struct gbm_import_fd_modifier_data {
++uint32_t width;
++uint32_t height;
++uint32_t format;
++uint32_t num_fds;
++int fds[GBM_MAX_PLANES];
++int strides[GBM_MAX_PLANES];
++int offsets[GBM_MAX_PLANES];
++uint64_t modifier;
++};
++
++struct gbm_bo *
++gbm_bo_import(struct gbm_device *gbm, uint32_t type,
++void *buffer, uint32_t usage);
++
++/**
++ * Flags to indicate the type of mapping for the buffer - these are
++ * passed into gbm_bo_map(). The caller must set the union of all the
++ * flags that are appropriate.
++ *
++ * These flags are independent of the GBM_BO_USE_* creation flags. However,
++ * mapping the buffer may require copying to/from a staging buffer.
++ *
++ * See also: pipe_map_flags
++ */
++enum gbm_bo_transfer_flags {
++    /**
++     * Buffer contents read back (or accessed directly) at transfer
++     * create time.
++     */
++    GBM_BO_TRANSFER_READ       = (1 << 0),
++    /**
++     * Buffer contents will be written back at unmap time
++     * (or modified as a result of being accessed directly).
++     */
++    GBM_BO_TRANSFER_WRITE      = (1 << 1),
++    /**
++     * Read/modify/write
++     */
++    GBM_BO_TRANSFER_READ_WRITE = (GBM_BO_TRANSFER_READ | GBM_BO_TRANSFER_WRITE),
++};
++
++void *
++gbm_bo_map(struct gbm_bo *bo,
++           uint32_t x, uint32_t y, uint32_t width, uint32_t height,
++           uint32_t flags, uint32_t *stride, void **map_data);
++
++void
++gbm_bo_unmap(struct gbm_bo *bo, void *map_data);
++
++uint32_t
++gbm_bo_get_width(struct gbm_bo *bo);
++
++uint32_t
++gbm_bo_get_height(struct gbm_bo *bo);
++
++uint32_t
++gbm_bo_get_stride(struct gbm_bo *bo);
++
++uint32_t
++gbm_bo_get_stride_for_plane(struct gbm_bo *bo, int plane);
++
++uint32_t
++gbm_bo_get_format(struct gbm_bo *bo);
++
++uint32_t
++gbm_bo_get_bpp(struct gbm_bo *bo);
++
++uint32_t
++gbm_bo_get_offset(struct gbm_bo *bo, int plane);
++
++struct gbm_device *
++gbm_bo_get_device(struct gbm_bo *bo);
++
++union gbm_bo_handle
++gbm_bo_get_handle(struct gbm_bo *bo);
++
++int
++gbm_bo_get_fd(struct gbm_bo *bo);
++
++uint64_t
++gbm_bo_get_modifier(struct gbm_bo *bo);
++
++int
++gbm_bo_get_plane_count(struct gbm_bo *bo);
++
++union gbm_bo_handle
++gbm_bo_get_handle_for_plane(struct gbm_bo *bo, int plane);
++
++int
++gbm_bo_get_fd_for_plane(struct gbm_bo *bo, int plane);
++
++int
++gbm_bo_write(struct gbm_bo *bo, const void *buf, size_t count);
++
++void
++gbm_bo_set_user_data(struct gbm_bo *bo, void *data,
++             void (*destroy_user_data)(struct gbm_bo *, void *));
++
++void *
++gbm_bo_get_user_data(struct gbm_bo *bo);
++
++void
++gbm_bo_destroy(struct gbm_bo *bo);
++
++struct gbm_surface *
++gbm_surface_create(struct gbm_device *gbm,
++                   uint32_t width, uint32_t height,
++           uint32_t format, uint32_t flags);
++
++struct gbm_surface *
++gbm_surface_create_with_modifiers(struct gbm_device *gbm,
++                                  uint32_t width, uint32_t height,
++                                  uint32_t format,
++                                  const uint64_t *modifiers,
++                                  const unsigned int count);
++
++struct gbm_bo *
++gbm_surface_lock_front_buffer(struct gbm_surface *surface);
++
++void
++gbm_surface_release_buffer(struct gbm_surface *surface, struct gbm_bo *bo);
++
++int
++gbm_surface_has_free_buffers(struct gbm_surface *surface);
++
++void
++gbm_surface_destroy(struct gbm_surface *surface);
++
++char *
++gbm_format_get_name(uint32_t gbm_format, struct gbm_format_name_desc *desc);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+diff --git a/src/meson.build b/src/meson.build
+index f0afd21e..6d4a45e1 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -65,6 +65,8 @@ virglrenderer_sources = [
+    'virglrenderer_hw.h',
+ ]
+ 
++
++#   'vrend_winsys_egl.c',
+ vrend_winsys_gbm_sources = [
+    'vrend_winsys_gbm.c',
+    'vrend_winsys_gbm.h',
+diff --git a/src/virglrenderer.c b/src/virglrenderer.c
+index 5307c2a9..3012d893 100644
+--- a/src/virglrenderer.c
++++ b/src/virglrenderer.c
+@@ -834,6 +834,7 @@ int virgl_renderer_init(void *cookie, int flags, struct virgl_renderer_callbacks
+ 
+    if (!state.winsys_initialized && !(flags & VIRGL_RENDERER_NO_VIRGL) &&
+        (flags & (VIRGL_RENDERER_USE_EGL | VIRGL_RENDERER_USE_GLX))) {
++   #if HAVE_EGL_GBM_H == 1
+       int drm_fd = -1;
+ 
+       if (flags & VIRGL_RENDERER_USE_EGL) {
+@@ -847,6 +848,7 @@ int virgl_renderer_init(void *cookie, int flags, struct virgl_renderer_callbacks
+             close(drm_fd);
+          goto fail;
+       }
++   #endif
+       state.winsys_initialized = true;
+    }
+ 
+diff --git a/src/vrend_renderer.c b/src/vrend_renderer.c
+index a3ca333a..7e07ab15 100644
+--- a/src/vrend_renderer.c
++++ b/src/vrend_renderer.c
+@@ -8617,9 +8617,16 @@ static int vrend_resource_alloc_texture(struct vrend_resource *gr,
+       gltype = tex_conv_table[format].gltype;
+ 
+       if (internalformat == 0) {
+-         virgl_error("Unknown format is %d\n", pr->format);
+-         glBindTexture(gr->target, 0);
+-         return EINVAL;
++         // Fallback to RGBA8 (FIXME: is it correct?) since we are initializing context with OSMesa,
++         // which caused virgl to recognize wrong format.
++         format = 2;
++         internalformat = tex_conv_table[format].internalformat;
++         glformat = tex_conv_table[format].glformat;
++         gltype = tex_conv_table[format].gltype;
++
++         virgl_error("unknown format is %d\n", pr->format);
++         //glBindTexture(gr->target, 0);
++         //return EINVAL;
+       }
+ 
+       if (pr->nr_samples > 1) {
+diff --git a/src/vrend_winsys.c b/src/vrend_winsys.c
+index 2f560808..66c91a0e 100644
+--- a/src/vrend_winsys.c
++++ b/src/vrend_winsys.c
+@@ -60,17 +60,21 @@ int vrend_winsys_init(uint32_t flags, int preferred_fd)
+        * If the user specifies a preferred DRM fd and we can't use it, fail. If the user doesn't
+        * specify an fd, it's possible to initialize EGL without one.
+        */
++#if HAVE_EGL_GBM_H == 1
+       gbm = virgl_gbm_init(preferred_fd);
+       if (preferred_fd > 0 && !gbm)
+          return -1;
++#endif
+ 
+       egl = virgl_egl_init(gbm, flags & VIRGL_RENDERER_USE_SURFACELESS,
+                            flags & VIRGL_RENDERER_USE_GLES);
+       if (!egl) {
++#if HAVE_EGL_GBM_H == 1
+          if (gbm) {
+             virgl_gbm_fini(gbm);
+             gbm = NULL;
+          }
++#endif
+ 
+          return -1;
+       }
+@@ -103,10 +107,12 @@ void vrend_winsys_cleanup(void)
+       virgl_egl_destroy(egl);
+       egl = NULL;
+       use_context = CONTEXT_NONE;
++#if HAVE_EGL_GBM_H == 1
+       if (gbm) {
+          virgl_gbm_fini(gbm);
+          gbm = NULL;
+       }
++#endif
+    } else if (use_context == CONTEXT_EGL_EXTERNAL) {
+       free(egl);
+       egl = NULL;
+@@ -210,7 +216,7 @@ int vrend_winsys_get_attrs_for_texture(uint32_t tex_id, uint32_t format, int *fo
+                                        bool *has_dmabuf_export,
+                                        int *planes, uint64_t *modifiers)
+ {
+-#ifdef ENABLE_GBM
++#if defined(ENABLE_GBM) && HAVE_EGL_GBM_H == 1
+    if (use_context == CONTEXT_EGL)
+       return virgl_egl_get_attrs_for_texture(egl, tex_id, format, fourcc,
+                                              has_dmabuf_export,
+@@ -229,7 +235,7 @@ int vrend_winsys_get_attrs_for_texture(uint32_t tex_id, uint32_t format, int *fo
+ 
+ int vrend_winsys_get_fd_for_texture(uint32_t tex_id, int *fd)
+ {
+-#ifdef ENABLE_GBM
++#if defined(ENABLE_GBM) && HAVE_EGL_GBM_H == 1
+    if (!egl)
+       return -1;
+ 
+@@ -243,7 +249,7 @@ int vrend_winsys_get_fd_for_texture(uint32_t tex_id, int *fd)
+ 
+ int vrend_winsys_get_fd_for_texture2(uint32_t tex_id, int *fd, int *stride, int *offset)
+ {
+-#ifdef ENABLE_GBM
++#if defined(ENABLE_GBM) && HAVE_EGL_GBM_H == 1
+    if (!egl)
+       return -1;
+ 
+diff --git a/src/vrend_winsys_egl.c b/src/vrend_winsys_egl.c
+index 9d9f410c..751e4668 100644
+--- a/src/vrend_winsys_egl.c
++++ b/src/vrend_winsys_egl.c
+@@ -51,7 +51,7 @@
+ #include "vrend_winsys.h"
+ #include "vrend_winsys_egl.h"
+ #include "virgl_hw.h"
+-#ifdef ENABLE_GBM
++#if HAVE_EGL_GBM_H == 1
+ #include "vrend_winsys_gbm.h"
+ #endif
+ #include "virgl_util.h"
+@@ -223,6 +223,7 @@ static EGLint virgl_egl_find_matching_device(struct gbm_device_info *dev_infos,
+    return -1;
+ }
+ 
++#if HAVE_EGL_GBM_H == 1
+ static EGLDeviceEXT virgl_egl_get_device(struct virgl_egl *egl) {
+    EGLint num_devices = 0;
+    EGLint max_devices = 64;
+@@ -273,13 +274,16 @@ static EGLDeviceEXT virgl_egl_get_device(struct virgl_egl *egl) {
+ 
+   return devices[device_num];
+ }
++#endif
+ 
+ static bool virgl_egl_get_display(struct virgl_egl *egl)
+ {
++#if HAVE_EGL_GBM_H == 1
+    EGLDeviceEXT device;
+ 
+    if (!egl->gbm)
+       return false;
++#endif
+ 
+    if (!has_bits(egl->extension_bits,
+                  EGL_EXT_PLATFORM_BASE |
+@@ -288,12 +292,16 @@ static bool virgl_egl_get_display(struct virgl_egl *egl)
+                  EGL_EXT_DEVICE_QUERY))
+       return false;
+ 
++#if HAVE_EGL_GBM_H == 1
+    device = virgl_egl_get_device(egl);
+ 
+    if (device == EGL_NO_DEVICE_EXT)
+       return false;
+ 
+    egl->egl_display = egl->funcs.eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, device, NULL);
++#else
++   egl->egl_display = egl->funcs.eglGetDisplay(EGL_DEFAULT_DISPLAY);
++#endif
+    return true;
+ }
+ #endif /* ENABLE_MINIGBM_ALLOCATION */
+@@ -323,6 +331,7 @@ struct virgl_egl *virgl_egl_init(EGLNativeDisplayType display_id, bool surfacele
+    const char *extensions;
+    struct virgl_egl *egl;
+ 
++#if HAVE_EGL_GBM_H == 1
+    const char *client_extensions = eglQueryString (NULL, EGL_EXTENSIONS);
+    bool has_egl_base = virgl_egl_has_extension_in_string(client_extensions, "EGL_EXT_platform_base");
+ 
+@@ -370,9 +379,10 @@ struct virgl_egl *virgl_egl_init(EGLNativeDisplayType display_id, bool surfacele
+       egl->egl_display = eglGetDisplay(display_id);
+ #endif
+    }
++#endif
+ 
+    if (!egl->egl_display) {
+-#ifdef ENABLE_GBM
++#if HAVE_EGL_GBM_H == 1
+       /*
+        * Don't fallback to the default display if the fd provided by (*get_drm_fd)
+        * can't be used.
+@@ -754,7 +764,11 @@ int virgl_egl_get_fd_for_texture(struct virgl_egl *egl, uint32_t tex_id, int *fd
+       if (!egl->gbm)
+          goto out_destroy;
+ 
++#if HAVE_EGL_GBM_H == 1
+       ret = virgl_gbm_export_fd(egl->gbm->device, handle, fd);
++#else
++      ret = 0;
++#endif
+       if (ret < 0)
+          goto out_destroy;
+    } else {
+diff --git a/src/vrend_winsys_gbm.c b/src/vrend_winsys_gbm.c
+index 19e6bb9f..34881b2e 100644
+--- a/src/vrend_winsys_gbm.c
++++ b/src/vrend_winsys_gbm.c
+@@ -111,6 +111,8 @@ static const struct format_conversion conversions[] = {
+     { GBM_FORMAT_YVU420, VIRGL_FORMAT_YV12},
+ };
+ 
++#if HAVE_EGL_GBM_H == 1
++
+ static int rendernode_open(void)
+ {
+    DIR *dir;
+@@ -305,6 +307,8 @@ void virgl_gbm_fini(struct virgl_gbm *gbm)
+    free(gbm);
+ }
+ 
++#endif
++
+ int virgl_gbm_convert_format(uint32_t *virgl_format, uint32_t *gbm_format)
+ {
+ 
+@@ -326,6 +330,8 @@ int virgl_gbm_convert_format(uint32_t *virgl_format, uint32_t *gbm_format)
+     return -1;
+ }
+ 
++#if HAVE_EGL_GBM_H == 1
++
+ #ifdef ENABLE_MINIGBM_ALLOCATION
+ int virgl_gbm_transfer(struct gbm_bo *bo, uint32_t direction, const struct iovec *iovecs,
+                        uint32_t num_iovecs, const struct vrend_transfer_info *info)
+@@ -563,3 +569,5 @@ bool virgl_gbm_gpu_import_required(uint32_t flags) {
+    return !virgl_gbm_external_allocation_preferred(flags) ||
+           (flags & (VIRGL_BIND_RENDER_TARGET | VIRGL_BIND_SAMPLER_VIEW)) != 0;
+ }
++
++#endif
+diff --git a/src/vrend_winsys_gbm.h b/src/vrend_winsys_gbm.h
+index 4486164c..29917d14 100644
+--- a/src/vrend_winsys_gbm.h
++++ b/src/vrend_winsys_gbm.h
+@@ -25,7 +25,7 @@
+ #ifndef VIRGL_GBM_H
+ #define VIRGL_GBM_H
+ 
+-#include <gbm.h>
++#include "gbm.h"
+ #include "vrend_iov.h"
+ #include "virglrenderer.h"
+ 
+diff --git a/src/xf86drm.h b/src/xf86drm.h
+new file mode 100644
+index 00000000..8b137891
+--- /dev/null
++++ b/src/xf86drm.h
+@@ -0,0 +1 @@
++
+diff --git a/vtest/meson.build b/vtest/meson.build
+index face6ab8..8483bf6b 100644
+--- a/vtest/meson.build
++++ b/vtest/meson.build
+@@ -38,6 +38,13 @@ libvtest = static_library(
+    dependencies : [libvirglrenderer_dep, gallium_dep],
+ )
+ 
++virgl_test_server_shared = shared_library(
++   'virgl_test_server',
++   vtest_sources,
++   dependencies : [libvirglrenderer_dep, gallium_dep],
++   c_args : [ '-D_EXPORT_MAIN=0' ]
++)
++
+ libvtest_dep = declare_dependency(
+    link_with: [libvtest],
+    include_directories: [
+@@ -49,18 +56,16 @@ libvtest_dep = declare_dependency(
+    ]
+ )
+ 
+-virgl_test_server_sources = [
+-   'vtest_main.c',
+-]
+-
+ virgl_test_server = executable(
+    'virgl_test_server',
+-   virgl_test_server_sources,
++   vtest_sources,
+    link_with: [libvtest],
+    dependencies : [libvirglrenderer_dep, gallium_dep],
+-   install : true
++   install : true,
++   c_args : [ '-D_EXPORT_MAIN=1' ]
+ )
+ 
++
+ if with_fuzzer
+    assert(cc.has_argument('-fsanitize=fuzzer'),
+           'Fuzzer enabled but compiler does not support "-fsanitize=fuzzer"')
+diff --git a/vtest/vtest_main.c b/vtest/vtest_main.c
+deleted file mode 100644
+index ba53f453..00000000
+--- a/vtest/vtest_main.c
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/**************************************************************************
+- *
+- * Copyright (C) 2023 Red Hat Inc.
+- *
+- * Permission is hereby granted, free of charge, to any person obtaining a
+- * copy of this software and associated documentation files (the "Software"),
+- * to deal in the Software without restriction, including without limitation
+- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+- * and/or sell copies of the Software, and to permit persons to whom the
+- * Software is furnished to do so, subject to the following conditions:
+- *
+- * The above copyright notice and this permission notice shall be included
+- * in all copies or substantial portions of the Software.
+- *
+- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+- * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+- * OTHER DEALINGS IN THE SOFTWARE.
+- *
+- **************************************************************************/
+-
+-#include "vtest_server.h"
+-
+-int main(int argc, char** argv) {
+-    return vtest_main(argc, argv);
+-}
+-
+diff --git a/vtest/vtest_server.c b/vtest/vtest_server.c
+index 93d949d7..75567231 100644
+--- a/vtest/vtest_server.c
++++ b/vtest/vtest_server.c
+@@ -131,7 +131,12 @@ static void vtest_server_close_socket(void);
+ static int vtest_client_dispatch_commands(struct vtest_client *client);
+ 
+ 
++#if _EXPORT_MAIN == 1
++int main(int argc, char **argv)
++#else
++VIRGL_EXPORT int vtest_main(int argc, char **argv);
+ int vtest_main(int argc, char **argv)
++#endif
+ {
+ #ifdef __AFL_LOOP
+ while (__AFL_LOOP(1000)) {
+@@ -147,7 +152,9 @@ while (__AFL_LOOP(1000)) {
+    if (server.do_fork) {
+       vtest_server_set_signal_child();
+    } else {
++   #if _EXPORT_MAIN == 1
+       vtest_server_set_signal_segv();
++   #endif
+    }
+ 
+    vtest_server_run();
+@@ -303,6 +310,10 @@ static void vtest_server_getenv(void)
+    server.use_egl_surfaceless = getenv("VTEST_USE_EGL_SURFACELESS") != NULL;
+    server.use_gles = getenv("VTEST_USE_GLES") != NULL;
+    server.render_device = getenv("VTEST_RENDERNODE");
++   const char *socket_name = getenv("VTEST_SOCKET_NAME");
++   if (socket_name) {
++       server.socket_name = socket_name;
++   }
+    server.use_compat_profile = getenv("VTEST_USE_COMPATIBILITY_PROFILE");
+ }
+ 
