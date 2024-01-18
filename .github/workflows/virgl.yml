@@ -52,7 +52,7 @@ jobs:
           git apply -v --rej ../vtest-patch.diff
           meson "build-android-${{matrix.arch}}" \
             --prefix=/tmp/build \
-            --cross-file "android-${{matrix.arch}}" \
+            --cross-file "../android-${{matrix.arch}}" \
             -Dplatforms=egl \
             -Dc_args='-Wno-error=gnu-offsetof-extensions'
           ninja -C "build-android-${{matrix.arch}}" install
